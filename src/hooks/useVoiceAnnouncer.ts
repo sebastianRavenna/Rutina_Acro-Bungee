@@ -40,52 +40,62 @@ export function useVoiceAnnouncer(opts: VoiceAnnouncerOpts = {}): VoiceAnnouncer
 
   const isPremiumActive = settings.premiumVoiceEnabled;
 
-  // Refs estables para que el handler de pre-generación no se invalide
+  // Refs estables: los hooks useSpeech y useAzureTTS retornan objetos nuevos
+  // en CADA render del componente padre (incluso cuando su estado interno no
+  // cambió). Si pusiéramos `speech` y `azure` directo en las deps de los
+  // useCallback, `speak`/`cancel` se recrearían en cada render y el useEffect
+  // del useTimer se ejecutaría de nuevo, perdiendo el segundo en curso del
+  // setInterval. Refs nos dan identidad estable.
   const optsRef = useRef(opts);
   optsRef.current = opts;
+  const speechRef = useRef(speech);
+  speechRef.current = speech;
+  const azureRef = useRef(azure);
+  azureRef.current = azure;
+  const premiumVoiceIdRef = useRef(settings.premiumVoiceId);
+  premiumVoiceIdRef.current = settings.premiumVoiceId;
+  const isPremiumActiveRef = useRef(isPremiumActive);
+  isPremiumActiveRef.current = isPremiumActive;
 
-  const speak = useCallback<VoiceAnnouncerReturn['speak']>(
-    (text, options) => {
-      if (!isPremiumActive) {
-        speech.speak(text, options);
-        return;
+  const speak = useCallback<VoiceAnnouncerReturn['speak']>((text, options) => {
+    if (!isPremiumActiveRef.current) {
+      speechRef.current.speak(text, options);
+      return;
+    }
+    let endFired = false;
+    const fireOnEnd = () => {
+      if (endFired) return;
+      endFired = true;
+      options?.onEnd?.();
+    };
+    void (async () => {
+      const played = await azureRef.current.play(
+        {
+          text,
+          voice: premiumVoiceIdRef.current,
+          // Sin prosody y sin style: la voz va al natural.
+        },
+        {
+          onStart: () => optsRef.current.onSpeakStart?.(),
+          onEnd: () => {
+            optsRef.current.onSpeakEnd?.();
+            fireOnEnd();
+          },
+        },
+      );
+      if (!played) {
+        // Fallback: si Azure no respondió o no está configurado, usar la voz del navegador
+        // para no dejar al user en silencio durante la rutina.
+        console.warn('[announcer] Azure TTS no disponible, fallback a speechSynthesis');
+        speechRef.current.speak(text, { ...options, onEnd: fireOnEnd });
       }
-      let endFired = false;
-      const fireOnEnd = () => {
-        if (endFired) return;
-        endFired = true;
-        options?.onEnd?.();
-      };
-      void (async () => {
-        const played = await azure.play(
-          {
-            text,
-            voice: settings.premiumVoiceId,
-            // Sin prosody y sin style: la voz va al natural.
-          },
-          {
-            onStart: () => optsRef.current.onSpeakStart?.(),
-            onEnd: () => {
-              optsRef.current.onSpeakEnd?.();
-              fireOnEnd();
-            },
-          },
-        );
-        if (!played) {
-          // Fallback: si Azure no respondió o no está configurado, usar la voz del navegador
-          // para no dejar al user en silencio durante la rutina.
-          console.warn('[announcer] Azure TTS no disponible, fallback a speechSynthesis');
-          speech.speak(text, { ...options, onEnd: fireOnEnd });
-        }
-      })();
-    },
-    [isPremiumActive, speech, azure, settings.premiumVoiceId],
-  );
+    })();
+  }, []);
 
   const cancel = useCallback(() => {
-    speech.cancel();
-    azure.cancel();
-  }, [speech, azure]);
+    speechRef.current.cancel();
+    azureRef.current.cancel();
+  }, []);
 
   const speakAndWait = useCallback<VoiceAnnouncerReturn['speakAndWait']>(
     (text, options) => {
