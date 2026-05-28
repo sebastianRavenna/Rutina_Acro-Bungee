@@ -36,8 +36,12 @@ export interface AppSettings {
   voicePitch: number;
   voiceVolume: number;
   energyPreset: EnergyPreset; // 'normal' = no transform; otros aplican modificadores
-  announceMovementName: boolean;
-  announceCountdown: boolean;
+  /** Si true, anuncia "Próximo: X" antes del cambio. El nombre del movimiento
+   *  al cambiar SIEMPRE se anuncia (independiente de este flag). */
+  announceNextMovement: boolean;
+  /** Segundos de cuenta regresiva al INICIO de la rutina, después de anunciar
+   *  el primer movimiento. 0 = desactivado. */
+  startCountdownSeconds: number;
   spotifyEnabled: boolean;
   spotifyClientId: string;
   // Azure TTS (voces premium pre-generadas)

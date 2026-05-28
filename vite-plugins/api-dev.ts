@@ -42,6 +42,12 @@ export function apiDevPlugin(): Plugin {
           }
 
           const webRequest = await nodeReqToWebRequest(req, url);
+          // Debug útil para diagnosticar problemas de body
+          if (req.method !== 'GET' && req.method !== 'HEAD') {
+            const clone = webRequest.clone();
+            const text = await clone.text().catch(() => '<unreadable>');
+            console.log(`[api-dev] ${req.method} /api/${fnName} body length=${text.length}`);
+          }
           const webResponse = await handler(webRequest);
 
           res.statusCode = webResponse.status;
@@ -70,23 +76,33 @@ async function nodeReqToWebRequest(req: IncomingMessage, url: URL): Promise<Requ
   }
 
   const method = (req.method ?? 'GET').toUpperCase();
-  let body: ArrayBuffer | undefined;
-  if (method !== 'GET' && method !== 'HEAD') {
-    body = await readNodeBody(req);
+  const hasBody = method !== 'GET' && method !== 'HEAD';
+  // Leer el body como string UTF-8 — más simple y robusto que ArrayBuffer
+  // (evita problemas con el Buffer.concat().buffer compartido del pool de Node).
+  let bodyText: string | undefined;
+  if (hasBody) {
+    bodyText = await readNodeBodyAsText(req);
   }
 
   return new Request(url.toString(), {
     method,
     headers,
-    body: body && body.byteLength > 0 ? body : undefined,
+    body: bodyText && bodyText.length > 0 ? bodyText : undefined,
   });
 }
 
-function readNodeBody(req: IncomingMessage): Promise<ArrayBuffer> {
+function readNodeBodyAsText(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     req.on('data', (chunk: Buffer) => chunks.push(chunk));
-    req.on('end', () => resolve(Buffer.concat(chunks).buffer as ArrayBuffer));
+    req.on('end', () => {
+      try {
+        const combined = Buffer.concat(chunks);
+        resolve(combined.toString('utf-8'));
+      } catch (e) {
+        reject(e);
+      }
+    });
     req.on('error', reject);
   });
 }

@@ -5,6 +5,7 @@ dist-ssr
 
 .env
 .env.local
+.env.example
 .env.*.local
 
 .vscode/*

@@ -43,24 +43,32 @@ export function SettingsPanel() {
   };
 
   return (
-    <div className="app-shell">
-      <header style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-        <button
-          onClick={() => setView('home')}
-          aria-label="Volver"
-          style={{
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: '50%',
-            width: 38,
-            height: 38,
-            color: 'var(--text-secondary)',
-            flexShrink: 0,
-            fontSize: 16,
-          }}
-        >
-          ←
-        </button>
+    <div className="app-shell" style={{ paddingTop: 70 }}>
+      {/* Botón volver flotante - visible mientras scrolleás */}
+      <button
+        onClick={() => setView('home')}
+        aria-label="Volver"
+        style={{
+          position: 'fixed',
+          top: 'calc(14px + env(safe-area-inset-top))',
+          left: 14,
+          background: 'rgba(13, 27, 53, 0.85)',
+          backdropFilter: 'blur(8px)',
+          border: '1px solid var(--border-strong)',
+          borderRadius: '50%',
+          width: 44,
+          height: 44,
+          color: 'var(--text-primary)',
+          fontSize: 18,
+          zIndex: 50,
+          cursor: 'pointer',
+          boxShadow: '0 4px 16px rgba(0, 0, 0, 0.5)',
+        }}
+      >
+        ←
+      </button>
+
+      <header style={{ marginBottom: 20 }}>
         <h2 style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.06em', fontSize: 24 }}>
           AJUSTES
         </h2>
@@ -207,15 +215,15 @@ export function SettingsPanel() {
 
       <Section title="ANUNCIOS">
         <Toggle
-          checked={settings.announceMovementName}
-          onChange={(v) => updateSettings({ announceMovementName: v })}
-          label="Anunciar nombre del movimiento"
+          checked={settings.announceNextMovement}
+          onChange={(v) => updateSettings({ announceNextMovement: v })}
+          label='Anunciar "Próximo: ..." antes del cambio'
         />
-        <Toggle
-          checked={settings.announceCountdown}
-          onChange={(v) => updateSettings({ announceCountdown: v })}
-          label="Anunciar cuenta regresiva (3, 2, 1)"
-        />
+        <small style={{ color: 'var(--text-muted)', fontSize: 11, marginTop: -8, display: 'block' }}>
+          El nombre del movimiento siempre se anuncia al cambiar. Esto controla solo el aviso
+          anticipado.
+        </small>
+
         <Field label={`Aviso previo global: ${settings.warnBeforeSeconds}s antes`}>
           <input
             type="range"
@@ -228,6 +236,30 @@ export function SettingsPanel() {
           />
           <small style={{ color: 'var(--text-muted)', fontSize: 11, marginTop: 4, display: 'block' }}>
             Cada movimiento puede personalizar este valor desde el editor.
+          </small>
+        </Field>
+
+        <Field
+          label={
+            settings.startCountdownSeconds === 0
+              ? 'Cuenta regresiva al iniciar: desactivada'
+              : `Cuenta regresiva al iniciar: ${settings.startCountdownSeconds}s`
+          }
+        >
+          <input
+            type="range"
+            min={0}
+            max={10}
+            step={1}
+            value={settings.startCountdownSeconds}
+            onChange={(e) =>
+              updateSettings({ startCountdownSeconds: parseInt(e.target.value, 10) })
+            }
+            style={{ width: '100%' }}
+          />
+          <small style={{ color: 'var(--text-muted)', fontSize: 11, marginTop: 4, display: 'block' }}>
+            Al tocar ▶ Iniciar, primero se anuncia el primer movimiento y después cuenta hacia
+            atrás antes de arrancar. Ej: "Bolita... 5, 4, 3, 2, 1".
           </small>
         </Field>
       </Section>

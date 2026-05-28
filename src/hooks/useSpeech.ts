@@ -8,7 +8,7 @@ interface UseSpeechOptions {
 }
 
 interface UseSpeechReturn {
-  speak: (text: string, options?: { hype?: boolean }) => void;
+  speak: (text: string, options?: { hype?: boolean; onEnd?: () => void }) => void;
   cancel: () => void;
   isSupported: boolean;
   availableVoices: SpeechSynthesisVoice[]; // todas (no solo es-*)
@@ -54,8 +54,11 @@ export function useSpeech(options: UseSpeechOptions = {}): UseSpeechReturn {
   }, [voices, spanishVoices, settings.voiceURI, settings.voiceLang]);
 
   const speak = useCallback(
-    (text: string, opts: { hype?: boolean } = {}) => {
-      if (!isSupported || !text) return;
+    (text: string, opts: { hype?: boolean; onEnd?: () => void } = {}) => {
+      if (!isSupported || !text) {
+        opts.onEnd?.();
+        return;
+      }
       const synth = window.speechSynthesis;
       try {
         synth.cancel();
@@ -78,13 +81,20 @@ export function useSpeech(options: UseSpeechOptions = {}): UseSpeechReturn {
       utter.rate = clamp(settings.voiceRate * mods.rateMultiplier, 0.5, 2);
       utter.pitch = clamp(settings.voicePitch + mods.pitchDelta, 0, 2);
       utter.volume = clamp(settings.voiceVolume * mods.volumeMultiplier, 0, 1);
+      let endFired = false;
+      const fireEnd = () => {
+        if (endFired) return;
+        endFired = true;
+        optionsRef.current.onSpeakEnd?.();
+        opts.onEnd?.();
+      };
       utter.onstart = () => optionsRef.current.onSpeakStart?.();
-      utter.onend = () => optionsRef.current.onSpeakEnd?.();
-      utter.onerror = () => optionsRef.current.onSpeakEnd?.();
+      utter.onend = fireEnd;
+      utter.onerror = fireEnd;
       try {
         synth.speak(utter);
       } catch {
-        // ignore
+        fireEnd();
       }
     },
     [

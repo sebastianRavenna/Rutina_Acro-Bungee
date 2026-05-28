@@ -48,31 +48,36 @@ export function LibraryView() {
   };
 
   return (
-    <div className="app-shell">
-      <header style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-        <button
-          onClick={() => setView('settings')}
-          aria-label="Volver"
-          style={{
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: '50%',
-            width: 38,
-            height: 38,
-            color: 'var(--text-secondary)',
-            flexShrink: 0,
-            fontSize: 16,
-          }}
-        >
-          ←
-        </button>
-        <div style={{ flex: 1 }}>
-          <h2 style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.06em', fontSize: 24 }}>
-            BIBLIOTECA
-          </h2>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-            {templates.length} {templates.length === 1 ? 'plantilla' : 'plantillas'}
-          </div>
+    <div className="app-shell" style={{ paddingTop: 70 }}>
+      <button
+        onClick={() => setView('settings')}
+        aria-label="Volver"
+        style={{
+          position: 'fixed',
+          top: 'calc(14px + env(safe-area-inset-top))',
+          left: 14,
+          background: 'rgba(13, 27, 53, 0.85)',
+          backdropFilter: 'blur(8px)',
+          border: '1px solid var(--border-strong)',
+          borderRadius: '50%',
+          width: 44,
+          height: 44,
+          color: 'var(--text-primary)',
+          fontSize: 18,
+          zIndex: 50,
+          cursor: 'pointer',
+          boxShadow: '0 4px 16px rgba(0, 0, 0, 0.5)',
+        }}
+      >
+        ←
+      </button>
+
+      <header style={{ marginBottom: 20 }}>
+        <h2 style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.06em', fontSize: 24 }}>
+          BIBLIOTECA
+        </h2>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+          {templates.length} {templates.length === 1 ? 'plantilla' : 'plantillas'}
         </div>
       </header>
 

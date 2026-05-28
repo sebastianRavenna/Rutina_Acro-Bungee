@@ -10,14 +10,22 @@ interface VoiceAnnouncerOpts {
   onSpeakEnd?: () => void;
 }
 
+interface SpeakOptions {
+  hype?: boolean;
+  onEnd?: () => void;
+}
+
 interface VoiceAnnouncerReturn {
-  speak: (text: string, options?: { hype?: boolean }) => void;
+  speak: (text: string, options?: SpeakOptions) => void;
+  /** Espera a que termine de hablar antes de resolver. Útil para secuencias. */
+  speakAndWait: (text: string, options?: SpeakOptions) => Promise<void>;
   cancel: () => void;
   preloadRoutine: (
     routine: Routine,
     onProgress?: (done: number, total: number) => void,
   ) => Promise<{ ok: number; failed: number; skipped: boolean }>;
   isPremiumActive: boolean;
+  premiumError: string | null;
 }
 
 /**
@@ -67,19 +75,36 @@ export function useVoiceAnnouncer(opts: VoiceAnnouncerOpts = {}): VoiceAnnouncer
       // En premium NO aplicamos hype dinámico (porque las arengas no están pre-cacheadas
       // y romperían el flow). Solo transformamos texto con el preset.
       const transformed = azureProsody.transform(text);
-      void azure.play(
-        {
-          text: transformed,
-          voice: settings.premiumVoiceId,
-          rate: azureProsody.rate,
-          pitch: azureProsody.pitch,
-          style: azureProsody.style,
-        },
-        {
-          onStart: () => optsRef.current.onSpeakStart?.(),
-          onEnd: () => optsRef.current.onSpeakEnd?.(),
-        },
-      );
+      let endFired = false;
+      const fireOnEnd = () => {
+        if (endFired) return;
+        endFired = true;
+        options?.onEnd?.();
+      };
+      void (async () => {
+        const played = await azure.play(
+          {
+            text: transformed,
+            voice: settings.premiumVoiceId,
+            rate: azureProsody.rate,
+            pitch: azureProsody.pitch,
+            style: azureProsody.style,
+          },
+          {
+            onStart: () => optsRef.current.onSpeakStart?.(),
+            onEnd: () => {
+              optsRef.current.onSpeakEnd?.();
+              fireOnEnd();
+            },
+          },
+        );
+        if (!played) {
+          // Fallback: si Azure no respondió o no está configurado, usar la voz del navegador
+          // para no dejar al user en silencio durante la rutina.
+          console.warn('[announcer] Azure TTS no disponible, fallback a speechSynthesis');
+          speech.speak(text, { ...options, onEnd: fireOnEnd });
+        }
+      })();
     },
     [
       isPremiumActive,
@@ -98,23 +123,41 @@ export function useVoiceAnnouncer(opts: VoiceAnnouncerOpts = {}): VoiceAnnouncer
     azure.cancel();
   }, [speech, azure]);
 
+  const speakAndWait = useCallback<VoiceAnnouncerReturn['speakAndWait']>(
+    (text, options) => {
+      return new Promise<void>((resolve) => {
+        speak(text, {
+          ...options,
+          onEnd: () => {
+            options?.onEnd?.();
+            resolve();
+          },
+        });
+      });
+    },
+    [speak],
+  );
+
   const preloadRoutine = useCallback<VoiceAnnouncerReturn['preloadRoutine']>(
     async (routine, onProgress) => {
       if (!isPremiumActive) {
         return { ok: 0, failed: 0, skipped: true };
       }
       const texts = new Set<string>();
+      // Nombre de cada movimiento SIEMPRE (se anuncia al cambiar)
       routine.movements.forEach((m, i) => {
-        if (settings.announceMovementName) {
-          texts.add(azureProsody.transform(m.name));
-        }
-        const next = routine.movements[i + 1];
-        if (next) {
-          texts.add(azureProsody.transform(`Próximo: ${next.name}`));
+        texts.add(azureProsody.transform(m.name));
+        // "Próximo: X" solo si está activo el aviso
+        if (settings.announceNextMovement) {
+          const next = routine.movements[i + 1];
+          if (next) {
+            texts.add(azureProsody.transform(`Próximo: ${next.name}`));
+          }
         }
       });
-      if (settings.announceCountdown) {
-        ['3', '2', '1'].forEach((n) => texts.add(azureProsody.transform(n)));
+      // Cuenta regresiva inicial: pre-cargar números 1..startCountdownSeconds
+      for (let n = 1; n <= settings.startCountdownSeconds; n++) {
+        texts.add(azureProsody.transform(String(n)));
       }
       texts.add(azureProsody.transform('¡Rutina completada! Excelente trabajo.'));
 
@@ -131,8 +174,8 @@ export function useVoiceAnnouncer(opts: VoiceAnnouncerOpts = {}): VoiceAnnouncer
     },
     [
       isPremiumActive,
-      settings.announceMovementName,
-      settings.announceCountdown,
+      settings.announceNextMovement,
+      settings.startCountdownSeconds,
       settings.premiumVoiceId,
       azure,
       azureProsody.rate,
@@ -142,5 +185,12 @@ export function useVoiceAnnouncer(opts: VoiceAnnouncerOpts = {}): VoiceAnnouncer
     ],
   );
 
-  return { speak, cancel, preloadRoutine, isPremiumActive };
+  return {
+    speak,
+    speakAndWait,
+    cancel,
+    preloadRoutine,
+    isPremiumActive,
+    premiumError: azure.lastFetchError,
+  };
 }

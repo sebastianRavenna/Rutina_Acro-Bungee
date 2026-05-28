@@ -13,6 +13,7 @@ import { NextMovement } from './NextMovement';
 import { PlaybackControls } from './PlaybackControls';
 import { SpotifyPanel } from '../spotify/SpotifyPanel';
 import { sumDurations } from '../../utils/format';
+import { unlockAudio } from '../../utils/audio-unlock';
 
 type PreloadState =
   | { kind: 'idle' }
@@ -47,9 +48,11 @@ export function PlaybackView() {
 
   const {
     speak,
+    speakAndWait,
     cancel: cancelSpeech,
     preloadRoutine,
     isPremiumActive,
+    premiumError,
   } = useVoiceAnnouncer({
     onSpeakStart: handleSpeakStart,
     onSpeakEnd: handleSpeakEnd,
@@ -85,12 +88,21 @@ export function PlaybackView() {
     return Math.max(0, Math.min(totalSecondsAll, elapsed));
   }, [routine, playback, currentMovement, totalSecondsAll]);
 
+  // CRÍTICO: cleanup SOLO cuando el componente se desmonta de verdad.
+  // Si pusiéramos cancelSpeech/releaseWakeLock como deps, el cleanup se
+  // re-ejecutaría en cada render (porque esas funciones cambian de identidad),
+  // y cancelSpeech() llamaría pause() al audio en curso → AbortError →
+  // fallback a voz nativa cuando debería usarse premium.
+  const cancelSpeechRef = useRef(cancelSpeech);
+  const releaseWakeLockRef = useRef(releaseWakeLock);
+  cancelSpeechRef.current = cancelSpeech;
+  releaseWakeLockRef.current = releaseWakeLock;
   useEffect(() => {
     return () => {
-      cancelSpeech();
-      void releaseWakeLock();
+      cancelSpeechRef.current();
+      void releaseWakeLockRef.current();
     };
-  }, [cancelSpeech, releaseWakeLock]);
+  }, []);
 
   if (!playback || !routine || !currentMovement) {
     return (
@@ -106,11 +118,30 @@ export function PlaybackView() {
   const launchPlayback = async () => {
     setStarted(true);
     await requestWakeLock();
-    if (settings.announceMovementName) speak(currentMovement.name, { hype: true });
+
+    // 1) Anunciar el nombre del primer movimiento — SIEMPRE
+    await speakAndWait(currentMovement.name, { hype: true });
+
+    // 2) Cuenta regresiva inicial: N, N-1, ..., 1 con pausas de ~1s entre cada uno
+    if (settings.startCountdownSeconds > 0) {
+      for (let n = settings.startCountdownSeconds; n >= 1; n--) {
+        await speakAndWait(String(n));
+        // Pausa corta entre números para que se sienta como "5 ... 4 ... 3"
+        await new Promise((r) => setTimeout(r, 200));
+      }
+    }
+
+    // 3) Arrancar timer
     setPlayback({ isPlaying: true });
   };
 
   const handleStart = async () => {
+    // CRÍTICO: desbloquear el audio del browser AHORA, durante el handler del click.
+    // Si no, después del await del preload (~2-5s), el browser pierde el user gesture
+    // y bloquea audio.play(), forzando fallback a voz nativa.
+    // Lo disparamos sincrónicamente — no await — para no perder el contexto del click.
+    void unlockAudio();
+
     if (!isPremiumActive) {
       void launchPlayback();
       return;
@@ -122,6 +153,16 @@ export function PlaybackView() {
         setPreloadState({ kind: 'loading', done, total });
       });
       setPreloadState({ kind: 'done', ok: result.ok, failed: result.failed });
+      // Si todo falló, el announcer va a caer a voz nativa automáticamente,
+      // pero avisamos al user para que sepa qué pasó.
+      if (result.ok === 0 && result.failed > 0) {
+        const detail = premiumError ? ` (${premiumError})` : '';
+        setPreloadState({
+          kind: 'error',
+          message: `Azure no respondió.${detail} Vamos a usar la voz del navegador.`,
+        });
+        return;
+      }
       void launchPlayback();
     } catch (e) {
       setPreloadState({
@@ -147,7 +188,7 @@ export function PlaybackView() {
     const prev = routine.movements[prevIndex];
     if (!prev) return;
     setPlayback({ currentIndex: prevIndex, timeLeft: prev.duration, isFinished: false });
-    if (settings.announceMovementName) speak(prev.name, { hype: true });
+    speak(prev.name, { hype: true });
   };
 
   const handleNext = () => {
@@ -159,7 +200,7 @@ export function PlaybackView() {
       return;
     }
     setPlayback({ currentIndex: nextIndex, timeLeft: next.duration });
-    if (settings.announceMovementName) speak(next.name, { hype: true });
+    speak(next.name, { hype: true });
   };
 
   const handleEnd = () => {
@@ -267,6 +308,13 @@ export function PlaybackView() {
           onStart={handleStart}
           preload={preload}
           isPremiumActive={isPremiumActive}
+          onBack={() => {
+            cancelSpeech();
+            void releaseWakeLock();
+            setActiveRoutine(routine.id);
+            endPlayback();
+            setView('editor');
+          }}
         />
       )}
 
@@ -303,15 +351,18 @@ function StartOverlay({
   onStart,
   preload,
   isPremiumActive,
+  onBack,
 }: {
   routineName: string;
   firstMovement: string;
   onStart: () => void;
   preload: PreloadState;
   isPremiumActive: boolean;
+  onBack: () => void;
 }) {
   const isLoading = preload.kind === 'loading';
   const isError = preload.kind === 'error';
+  const errorMessage = preload.kind === 'error' ? preload.message : null;
   const pct =
     preload.kind === 'loading' && preload.total > 0
       ? Math.round((preload.done / preload.total) * 100)
@@ -333,6 +384,27 @@ function StartOverlay({
         textAlign: 'center',
       }}
     >
+      {/* Botón volver - permite salir sin tener que refrescar */}
+      <button
+        onClick={onBack}
+        aria-label="Volver al editor"
+        style={{
+          position: 'absolute',
+          top: 'calc(20px + env(safe-area-inset-top))',
+          left: 20,
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: '50%',
+          width: 42,
+          height: 42,
+          color: 'var(--text-secondary)',
+          fontSize: 18,
+          cursor: 'pointer',
+        }}
+      >
+        ←
+      </button>
+
       <div style={{ fontSize: 13, letterSpacing: '0.3em', color: 'var(--text-muted)', marginBottom: 10 }}>
         LISTO PARA COMENZAR
       </div>
@@ -393,20 +465,20 @@ function StartOverlay({
             background: 'rgba(255, 107, 53, 0.08)',
             border: '1px solid rgba(255, 107, 53, 0.3)',
             borderRadius: 8,
-            padding: 10,
+            padding: 12,
             fontSize: 12,
             color: 'var(--accent-warn)',
             maxWidth: 360,
+            wordBreak: 'break-word',
+            textAlign: 'left',
           }}
         >
-          No se pudieron pre-generar los audios premium. Vamos a usar las voces del sistema.
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={onStart}
-            style={{ marginTop: 10 }}
-          >
-            Iniciar igual
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>No se pudo usar voz premium</div>
+          <div style={{ color: 'var(--text-secondary)', marginBottom: 10, fontSize: 11 }}>
+            {errorMessage ?? 'Error desconocido'}
+          </div>
+          <Button variant="secondary" size="sm" onClick={onStart}>
+            Iniciar con voz del navegador
           </Button>
         </div>
       )}

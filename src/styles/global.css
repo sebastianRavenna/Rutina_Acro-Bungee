@@ -70,6 +70,18 @@ select {
   font-family: inherit;
 }
 
+/* Forzar dark mode en los <option> nativos: en Windows/Chrome heredan del SO
+   y aparecen con fondo blanco si no se estilan explícitamente. */
+select {
+  color-scheme: dark;
+}
+
+option,
+optgroup {
+  background-color: #0d1b35;
+  color: #ffffff;
+}
+
 input[type='number'] {
   -moz-appearance: textfield;
 }

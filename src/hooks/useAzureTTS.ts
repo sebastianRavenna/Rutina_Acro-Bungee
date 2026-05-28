@@ -22,15 +22,19 @@ interface UseAzureTTSResult {
   voices: AzureVoice[];
   voicesLoading: boolean;
   voicesError: string | null;
+  /** Último mensaje de error del proxy /api/tts (para mostrar en UI). */
+  lastFetchError: string | null;
   /** Pre-genera una lista de textos. Resuelve cuando todos están listos (o cacheados). */
   preload: (
     requests: TTSRequest[],
     onProgress?: (done: number, total: number) => void,
   ) => Promise<{ ok: number; failed: number }>;
-  /** Reproduce un audio pre-cargado (o lo busca on-the-fly si no estaba). */
-  play: (req: TTSRequest, opts?: { onStart?: () => void; onEnd?: () => void }) => Promise<void>;
+  /** Reproduce un audio pre-cargado (o lo busca on-the-fly si no estaba). Resuelve true si pudo reproducir, false si falló. */
+  play: (req: TTSRequest, opts?: { onStart?: () => void; onEnd?: () => void }) => Promise<boolean>;
   /** Cancela la reproducción actual. */
   cancel: () => void;
+  /** Limpia el último error reportado. */
+  clearError: () => void;
 }
 
 function cacheKey(req: TTSRequest): string {
@@ -41,10 +45,14 @@ export function useAzureTTS(enabled: boolean): UseAzureTTSResult {
   const [voices, setVoices] = useState<AzureVoice[]>([]);
   const [voicesLoading, setVoicesLoading] = useState(false);
   const [voicesError, setVoicesError] = useState<string | null>(null);
+  const [lastFetchError, setLastFetchError] = useState<string | null>(null);
 
   // Cache en memoria (URLs creadas con URL.createObjectURL para reproducción instantánea)
   const memCacheRef = useRef<Map<string, ArrayBuffer>>(new Map());
   const objectUrlsRef = useRef<Map<string, string>>(new Map());
+  // Un solo HTMLAudioElement compartido — evita el "warmup" del browser
+  // en cada play() nuevo, que se nota como "primera palabra cortada".
+  const sharedAudioRef = useRef<HTMLAudioElement | null>(null);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -106,15 +114,25 @@ export function useAzureTTS(enabled: boolean): UseAzureTTSResult {
         body: JSON.stringify(req),
       });
       if (!res.ok) {
-        const errText = await res.text().catch(() => '');
-        throw new Error(`/api/tts ${res.status}: ${errText.slice(0, 200)}`);
+        // Tratamos de leer el JSON {error: "..."} que devuelve nuestro proxy
+        let detail = '';
+        try {
+          const json = await res.clone().json();
+          if (json && typeof json.error === 'string') detail = json.error;
+        } catch {
+          detail = await res.text().catch(() => '');
+        }
+        throw new Error(`/api/tts ${res.status}: ${detail.slice(0, 300)}`);
       }
       const buf = await res.arrayBuffer();
       memCacheRef.current.set(key, buf);
       void audioCachePut(key, buf);
+      setLastFetchError(null);
       return buf;
     } catch (e) {
-      console.warn('[azure-tts] fetch failed:', e);
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn('[azure-tts] fetch failed:', msg);
+      setLastFetchError(msg);
       return null;
     }
   }, []);
@@ -160,7 +178,7 @@ export function useAzureTTS(enabled: boolean): UseAzureTTSResult {
         const fetched = await fetchOne(req);
         if (!fetched) {
           opts?.onEnd?.();
-          return;
+          return false;
         }
         buf = fetched;
       }
@@ -172,15 +190,25 @@ export function useAzureTTS(enabled: boolean): UseAzureTTSResult {
         objectUrlsRef.current.set(key, url);
       }
 
-      // Detener cualquier reproducción anterior
+      // Reutilizar un único <audio> compartido — el primer load tiene warmup
+      // del browser (que se nota como "primera palabra cortada"); los plays
+      // subsecuentes reutilizan el mismo decoder y son inmediatos.
+      if (!sharedAudioRef.current) {
+        sharedAudioRef.current = new Audio();
+        sharedAudioRef.current.preload = 'auto';
+      }
+      const audio = sharedAudioRef.current;
+
+      // Detener cualquier reproducción anterior limpiamente (sin AbortError)
       try {
-        currentAudioRef.current?.pause();
+        audio.pause();
+        audio.currentTime = 0;
       } catch {
         // ignore
       }
 
-      const audio = new Audio(url);
       currentAudioRef.current = audio;
+      // Reasignar handlers — solo el último play "gana"
       audio.onplay = () => opts?.onStart?.();
       audio.onended = () => {
         if (currentAudioRef.current === audio) currentAudioRef.current = null;
@@ -190,11 +218,33 @@ export function useAzureTTS(enabled: boolean): UseAzureTTSResult {
         if (currentAudioRef.current === audio) currentAudioRef.current = null;
         opts?.onEnd?.();
       };
+
+      audio.src = url;
       try {
+        // Esperar a que esté listo para minimizar el delay del primer frame
+        if (audio.readyState < 2) {
+          await new Promise<void>((resolve) => {
+            const onReady = () => {
+              audio.removeEventListener('canplay', onReady);
+              audio.removeEventListener('error', onReady);
+              resolve();
+            };
+            audio.addEventListener('canplay', onReady, { once: true });
+            audio.addEventListener('error', onReady, { once: true });
+            // Timeout defensivo por si nunca dispara canplay
+            setTimeout(onReady, 1500);
+          });
+        }
         await audio.play();
+        return true;
       } catch (e) {
+        // AbortError de pause/play race ya no nos importa: lo manejamos arriba
+        if (e instanceof DOMException && e.name === 'AbortError') {
+          return false;
+        }
         console.warn('[azure-tts] audio.play() failed:', e);
         opts?.onEnd?.();
+        return false;
       }
     },
     [fetchOne],
@@ -202,12 +252,18 @@ export function useAzureTTS(enabled: boolean): UseAzureTTSResult {
 
   const cancel = useCallback(() => {
     try {
-      currentAudioRef.current?.pause();
+      const audio = currentAudioRef.current;
+      if (audio) {
+        audio.pause();
+        audio.currentTime = 0;
+      }
       currentAudioRef.current = null;
     } catch {
       // ignore
     }
   }, []);
 
-  return { voices, voicesLoading, voicesError, preload, play, cancel };
+  const clearError = useCallback(() => setLastFetchError(null), []);
+
+  return { voices, voicesLoading, voicesError, lastFetchError, preload, play, cancel, clearError };
 }

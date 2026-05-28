@@ -19,22 +19,23 @@ interface RequestBody {
   style?: string; // ej: "cheerful", "shouting" (algunos modelos lo soportan)
 }
 
-// Voces neuronales en español permitidas — whitelist defensiva para que no abusen del proxy
-const ALLOWED_VOICES = new Set([
-  'es-AR-ElenaNeural',
-  'es-AR-TomasNeural',
-  'es-MX-DaliaNeural',
-  'es-MX-JorgeNeural',
-  'es-ES-ElviraNeural',
-  'es-ES-AlvaroNeural',
-  'es-ES-XimenaNeural',
-  'es-US-PalomaNeural',
-  'es-US-AlonsoNeural',
-  'es-CO-SalomeNeural',
-  'es-CO-GonzaloNeural',
-  'es-CL-CatalinaNeural',
-  'es-PE-CamilaNeural',
-]);
+// Voces neuronales en español permitidas — whitelist defensiva para que no abusen del proxy.
+// El valor es la lista de styles que esa voz soporta (vía mstts:express-as). Vacío = no usa styles.
+const ALLOWED_VOICES: Record<string, string[]> = {
+  'es-AR-ElenaNeural': [],
+  'es-AR-TomasNeural': [],
+  'es-MX-DaliaNeural': ['cheerful'],
+  'es-MX-JorgeNeural': ['cheerful'],
+  'es-ES-ElviraNeural': [],
+  'es-ES-AlvaroNeural': [],
+  'es-ES-XimenaNeural': [],
+  'es-US-PalomaNeural': [],
+  'es-US-AlonsoNeural': [],
+  'es-CO-SalomeNeural': [],
+  'es-CO-GonzaloNeural': [],
+  'es-CL-CatalinaNeural': [],
+  'es-PE-CamilaNeural': [],
+};
 
 const MAX_TEXT_LENGTH = 400; // anti-abuse: ningún anuncio razonable supera esto
 
@@ -47,11 +48,26 @@ function escapeXml(s: string): string {
     .replace(/'/g, '&apos;');
 }
 
+function isZeroPercent(v: string | undefined): boolean {
+  if (!v) return true;
+  const trimmed = v.trim();
+  return trimmed === '+0%' || trimmed === '-0%' || trimmed === '0%' || trimmed === '';
+}
+
 function buildSSML(body: Required<Pick<RequestBody, 'text' | 'voice'>> & RequestBody): string {
   const safeText = escapeXml(body.text);
-  const rate = body.rate ?? '+0%';
-  const pitch = body.pitch ?? '+0%';
   const lang = body.voice.slice(0, 5); // "es-AR" etc.
+
+  // Si rate y pitch son ambos 0, OMITIMOS el <prosody> y dejamos que la voz
+  // suene a su ritmo natural. Envolver con "+0%" puede alterar sutilmente el
+  // ritmo y hacer que suene "rara" o ligeramente acelerada.
+  const hasRate = !isZeroPercent(body.rate);
+  const hasPitch = !isZeroPercent(body.pitch);
+  const hasProsody = hasRate || hasPitch;
+  const rateAttr = hasRate ? ` rate="${body.rate}"` : '';
+  const pitchAttr = hasPitch ? ` pitch="${body.pitch}"` : '';
+  const prosodyOpen = hasProsody ? `<prosody${rateAttr}${pitchAttr}>` : '';
+  const prosodyClose = hasProsody ? `</prosody>` : '';
 
   // Si se pidió style y la voz lo soporta, lo aplicamos via mstts express-as
   const styleOpen = body.style ? `<mstts:express-as style="${escapeXml(body.style)}">` : '';
@@ -61,7 +77,7 @@ function buildSSML(body: Required<Pick<RequestBody, 'text' | 'voice'>> & Request
 <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis"
        xmlns:mstts="http://www.w3.org/2001/mstts" xml:lang="${lang}">
   <voice name="${body.voice}">
-    ${styleOpen}<prosody rate="${rate}" pitch="${pitch}">${safeText}</prosody>${styleClose}
+    ${styleOpen}${prosodyOpen}${safeText}${prosodyClose}${styleClose}
   </voice>
 </speak>`;
 }
@@ -102,11 +118,16 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   const voice = body.voice ?? 'es-AR-ElenaNeural';
-  if (!ALLOWED_VOICES.has(voice)) {
+  const supportedStyles = ALLOWED_VOICES[voice];
+  if (!supportedStyles) {
     return jsonError(400, `Voz no permitida: ${voice}`);
   }
 
-  const ssml = buildSSML({ text, voice, rate: body.rate, pitch: body.pitch, style: body.style });
+  // Filtrar style: si la voz no lo soporta, lo descartamos en lugar de fallar.
+  // (Azure devuelve 400 si mandás un style que la voz no entiende.)
+  const safeStyle = body.style && supportedStyles.includes(body.style) ? body.style : undefined;
+
+  const ssml = buildSSML({ text, voice, rate: body.rate, pitch: body.pitch, style: safeStyle });
   const endpoint = `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`;
 
   const azureRes = await fetch(endpoint, {
@@ -114,15 +135,28 @@ export default async function handler(req: Request): Promise<Response> {
     headers: {
       'Ocp-Apim-Subscription-Key': key,
       'Content-Type': 'application/ssml+xml',
-      'X-Microsoft-OutputFormat': 'audio-24khz-48kbitrate-mono-mp3',
+      // Audio en 48kHz / 192kbps suena mucho más natural que 24kHz/48kbps,
+      // y el ancho de banda extra es despreciable para anuncios cortos.
+      'X-Microsoft-OutputFormat': 'audio-48khz-192kbitrate-mono-mp3',
       'User-Agent': 'AcroBungeeTimer/0.1',
     },
     body: ssml,
   });
 
   if (!azureRes.ok) {
-    const text = await azureRes.text().catch(() => '');
-    return jsonError(azureRes.status, `Azure TTS error ${azureRes.status}: ${text.slice(0, 300)}`);
+    const azureBody = await azureRes.text().catch(() => '');
+    // Log server-side para debug (aparece en la terminal donde corre `npm run dev`)
+    console.error('[api/tts] Azure rechazó la request:', {
+      status: azureRes.status,
+      voice,
+      region,
+      bodyExcerpt: azureBody.slice(0, 500),
+      ssmlExcerpt: ssml.slice(0, 500),
+    });
+    return jsonError(
+      azureRes.status,
+      `Azure ${azureRes.status} (voz=${voice}, región=${region}): ${azureBody.slice(0, 200) || '(respuesta vacía — probablemente la voz no está disponible en esta región)'}`,
+    );
   }
 
   const arrayBuffer = await azureRes.arrayBuffer();

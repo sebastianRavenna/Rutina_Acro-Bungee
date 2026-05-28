@@ -4,7 +4,7 @@ import type { Routine } from '../types';
 
 interface UseTimerArgs {
   routine: Routine | null;
-  speak: (text: string, options?: { hype?: boolean }) => void;
+  speak: (text: string, options?: { hype?: boolean; onEnd?: () => void }) => void;
 }
 
 export function useTimer({ routine, speak }: UseTimerArgs) {
@@ -13,17 +13,14 @@ export function useTimer({ routine, speak }: UseTimerArgs) {
   const setPlayback = useAppStore((s) => s.setPlayback);
   const endPlayback = useAppStore((s) => s.endPlayback);
 
-  const tickedAnnouncementsRef = useRef<{ warn: boolean; countdown: Set<number> }>({
-    warn: false,
-    countdown: new Set(),
-  });
+  const tickedAnnouncementsRef = useRef<{ warn: boolean }>({ warn: false });
   const lastIndexRef = useRef<number>(-1);
 
   useEffect(() => {
     if (!playback || !routine) return;
     if (playback.currentIndex !== lastIndexRef.current) {
       lastIndexRef.current = playback.currentIndex;
-      tickedAnnouncementsRef.current = { warn: false, countdown: new Set() };
+      tickedAnnouncementsRef.current = { warn: false };
     }
   }, [playback, routine]);
 
@@ -45,23 +42,16 @@ export function useTimer({ routine, speak }: UseTimerArgs) {
       // Override por movimiento si está definido; si no, el global
       const effectiveWarn = currentMovement.warnBeforeSeconds ?? settings.warnBeforeSeconds;
 
-      // Aviso previo: cuando faltan exactamente effectiveWarn segundos y hay siguiente
+      // Aviso previo "Próximo: X" — solo si el toggle está activo
       if (
         !ann.warn &&
         nextMovement &&
+        settings.announceNextMovement &&
         effectiveWarn > 0 &&
         current.timeLeft === effectiveWarn
       ) {
         ann.warn = true;
         speak(`Próximo: ${nextMovement.name}`);
-      }
-
-      // Countdown "3, 2, 1"
-      if (settings.announceCountdown && current.timeLeft <= 3 && current.timeLeft > 0) {
-        if (!ann.countdown.has(current.timeLeft)) {
-          ann.countdown.add(current.timeLeft);
-          speak(String(current.timeLeft));
-        }
       }
 
       const newTimeLeft = current.timeLeft - 1;
@@ -70,12 +60,11 @@ export function useTimer({ routine, speak }: UseTimerArgs) {
         const nextIndex = current.currentIndex + 1;
         const nextMov = routine.movements[nextIndex];
         if (nextMov) {
-          tickedAnnouncementsRef.current = { warn: false, countdown: new Set() };
+          tickedAnnouncementsRef.current = { warn: false };
           lastIndexRef.current = nextIndex;
           setPlayback({ currentIndex: nextIndex, timeLeft: nextMov.duration });
-          if (settings.announceMovementName) {
-            speak(nextMov.name, { hype: true });
-          }
+          // SIEMPRE anunciar el nombre del nuevo movimiento al cambiar
+          speak(nextMov.name, { hype: true });
         } else {
           setPlayback({ timeLeft: 0, isPlaying: false, isFinished: true });
           speak('¡Rutina completada! Excelente trabajo.');
@@ -93,8 +82,7 @@ export function useTimer({ routine, speak }: UseTimerArgs) {
     playback?.isFinished,
     routine,
     settings.warnBeforeSeconds,
-    settings.announceMovementName,
-    settings.announceCountdown,
+    settings.announceNextMovement,
     setPlayback,
     endPlayback,
     speak,

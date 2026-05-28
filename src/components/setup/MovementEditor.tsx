@@ -66,24 +66,31 @@ export function MovementEditor() {
   });
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" style={{ paddingTop: 70 }}>
+      <button
+        onClick={() => setView('home')}
+        aria-label="Volver"
+        style={{
+          position: 'fixed',
+          top: 'calc(14px + env(safe-area-inset-top))',
+          left: 14,
+          background: 'rgba(13, 27, 53, 0.85)',
+          backdropFilter: 'blur(8px)',
+          border: '1px solid var(--border-strong)',
+          borderRadius: '50%',
+          width: 44,
+          height: 44,
+          color: 'var(--text-primary)',
+          fontSize: 18,
+          zIndex: 50,
+          cursor: 'pointer',
+          boxShadow: '0 4px 16px rgba(0, 0, 0, 0.5)',
+        }}
+      >
+        ←
+      </button>
+
       <header style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <button
-          onClick={() => setView('home')}
-          aria-label="Volver"
-          style={{
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: '50%',
-            width: 38,
-            height: 38,
-            color: 'var(--text-secondary)',
-            flexShrink: 0,
-            fontSize: 16,
-          }}
-        >
-          ←
-        </button>
         <Input
           value={routine.name}
           onChange={(e) => updateRoutine(routine.id, { name: e.target.value })}

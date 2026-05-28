@@ -3,6 +3,7 @@ import { useAppStore } from '../../store/useAppStore';
 import { Button } from '../ui/Button';
 import { Toggle } from '../ui/Toggle';
 import { useAzureTTS } from '../../hooks/useAzureTTS';
+import { unlockAudio } from '../../utils/audio-unlock';
 
 export function PremiumVoiceSection() {
   const settings = useAppStore((s) => s.settings);
@@ -12,13 +13,19 @@ export function PremiumVoiceSection() {
   const [testError, setTestError] = useState<string | null>(null);
 
   const handleTest = async () => {
+    void unlockAudio();
     setTesting(true);
     setTestError(null);
+    azure.clearError();
     try {
-      await azure.play({
+      const played = await azure.play({
         voice: settings.premiumVoiceId,
         text: '¡Vamos! Hola, esta es una prueba de voz premium.',
       });
+      if (!played) {
+        // azure.play no tira; expone el error en lastFetchError
+        setTestError(azure.lastFetchError ?? 'No se pudo reproducir el audio.');
+      }
     } catch (e) {
       setTestError(e instanceof Error ? e.message : String(e));
     } finally {

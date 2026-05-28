@@ -18,8 +18,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   voicePitch: 1.0,
   voiceVolume: 1.0,
   energyPreset: 'normal',
-  announceMovementName: true,
-  announceCountdown: false,
+  announceNextMovement: true,
+  startCountdownSeconds: 5,
   spotifyEnabled: false,
   spotifyClientId: '',
   premiumVoiceEnabled: false,
@@ -267,12 +267,34 @@ export const useAppStore = create<AppStore>()(
     }),
     {
       name: 'acrobungee-timer-v1',
+      version: 2,
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         routines: state.routines,
         movementTemplates: state.movementTemplates,
         settings: state.settings,
       }),
+      migrate: (persisted: unknown, fromVersion: number) => {
+        const state = persisted as { settings?: Record<string, unknown> } | undefined;
+        if (state?.settings && fromVersion < 2) {
+          const s = state.settings;
+          // Migración: announceMovementName/announceCountdown → announceNextMovement/startCountdownSeconds
+          if ('announceMovementName' in s) {
+            s.announceNextMovement = s.announceMovementName !== false;
+            delete s.announceMovementName;
+          } else if (!('announceNextMovement' in s)) {
+            s.announceNextMovement = true;
+          }
+          if ('announceCountdown' in s) {
+            s.startCountdownSeconds = s.announceCountdown ? 5 : 0;
+            delete s.announceCountdown;
+          } else if (!('startCountdownSeconds' in s)) {
+            s.startCountdownSeconds = 5;
+          }
+        }
+        // El cast es seguro: la lógica de migración ya dejó la forma esperada.
+        return state as unknown as AppStore;
+      },
     },
   ),
 );
