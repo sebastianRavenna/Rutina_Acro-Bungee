@@ -7,6 +7,8 @@ interface MovementItemProps {
   total: number;
   movement: Movement;
   globalWarnSeconds: number;
+  /** Si false (toggle global "Anunciar próximo" está OFF), ocultamos la UI del aviso personalizado. */
+  showCustomWarn: boolean;
   /** True si ya existe una plantilla con mismo nombre + duración. */
   alreadyInLibrary: boolean;
   onChange: (partial: Partial<Omit<Movement, 'id'>>) => void;
@@ -21,6 +23,7 @@ export function MovementItem({
   total,
   movement,
   globalWarnSeconds,
+  showCustomWarn,
   alreadyInLibrary,
   onChange,
   onDelete,
@@ -128,9 +131,11 @@ export function MovementItem({
         <button type="button" onClick={() => setShowNotes((v) => !v)} style={linkBtn}>
           {showNotes ? '− Ocultar notas' : '+ Agregar nota'}
         </button>
-        <button type="button" onClick={() => setShowWarn((v) => !v)} style={linkBtn}>
-          {showWarn || hasCustomWarn ? '− Aviso personalizado' : '+ Aviso personalizado'}
-        </button>
+        {showCustomWarn && (
+          <button type="button" onClick={() => setShowWarn((v) => !v)} style={linkBtn}>
+            {showWarn || hasCustomWarn ? '− Aviso personalizado' : '+ Aviso personalizado'}
+          </button>
+        )}
       </div>
 
       {showNotes && (
@@ -142,7 +147,7 @@ export function MovementItem({
         />
       )}
 
-      {showWarn && (
+      {showCustomWarn && showWarn && (
         <div
           style={{
             display: 'flex',

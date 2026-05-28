@@ -12,6 +12,7 @@ export function MovementEditor() {
     routineId ? s.routines.find((r) => r.id === routineId) ?? null : null,
   );
   const globalWarnSeconds = useAppStore((s) => s.settings.warnBeforeSeconds);
+  const announceNextMovement = useAppStore((s) => s.settings.announceNextMovement);
   const templates = useAppStore((s) => s.movementTemplates);
   const updateRoutine = useAppStore((s) => s.updateRoutine);
   const addMovement = useAppStore((s) => s.addMovement);
@@ -126,6 +127,7 @@ export function MovementEditor() {
               total={routine.movements.length}
               movement={m}
               globalWarnSeconds={globalWarnSeconds}
+              showCustomWarn={announceNextMovement}
               alreadyInLibrary={templateNameKeys.has(key)}
               onChange={(partial) => updateMovement(routine.id, m.id, partial)}
               onDelete={() => deleteMovement(routine.id, m.id)}
