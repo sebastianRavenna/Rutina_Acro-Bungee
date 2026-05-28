@@ -54,9 +54,9 @@ export function useTimer({ routine, speak }: UseTimerArgs) {
         speak(`Próximo: ${nextMovement.name}`);
       }
 
-      const newTimeLeft = current.timeLeft - 1;
-
-      if (newTimeLeft <= 0) {
+      // Si timeLeft ya está en 0 (mostrado un segundo entero), AHORA cambiamos.
+      // Esto garantiza que el "0" sea visible por un segundo antes del cambio.
+      if (current.timeLeft <= 0) {
         const nextIndex = current.currentIndex + 1;
         const nextMov = routine.movements[nextIndex];
         if (nextMov) {
@@ -66,11 +66,12 @@ export function useTimer({ routine, speak }: UseTimerArgs) {
           // SIEMPRE anunciar el nombre del nuevo movimiento al cambiar
           speak(nextMov.name);
         } else {
-          setPlayback({ timeLeft: 0, isPlaying: false, isFinished: true });
+          setPlayback({ isPlaying: false, isFinished: true });
           speak('¡Rutina completada! Excelente trabajo.');
         }
       } else {
-        setPlayback({ timeLeft: newTimeLeft });
+        // Decrementar normalmente: incluyendo 1 → 0 para que el 0 se muestre.
+        setPlayback({ timeLeft: current.timeLeft - 1 });
       }
     }, 1000);
 

@@ -59,11 +59,14 @@ export function MovementEditor() {
     setNewDuration('');
   };
 
-  const filteredTemplates = templates.filter((t) => {
-    const q = pickerSearch.trim().toLowerCase();
-    if (!q) return true;
-    return t.name.toLowerCase().includes(q);
-  });
+  const filteredTemplates = templates
+    .filter((t) => {
+      const q = pickerSearch.trim().toLowerCase();
+      if (!q) return true;
+      return t.name.toLowerCase().includes(q);
+    })
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
 
   return (
     <div className="app-shell" style={{ paddingTop: 70 }}>

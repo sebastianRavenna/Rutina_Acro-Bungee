@@ -1,11 +1,16 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Modal } from '../ui/Modal';
 
 export function LibraryView() {
-  const templates = useAppStore((s) => s.movementTemplates);
+  const rawTemplates = useAppStore((s) => s.movementTemplates);
+  // Orden alfabético (case-insensitive, con locale español para acentos/eñes)
+  const templates = useMemo(
+    () => [...rawTemplates].sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' })),
+    [rawTemplates],
+  );
   const deleteTemplate = useAppStore((s) => s.deleteTemplate);
   const updateTemplate = useAppStore((s) => s.updateTemplate);
   const setView = useAppStore((s) => s.setView);
