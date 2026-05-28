@@ -4,12 +4,9 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Toggle } from '../ui/Toggle';
 import { useSpeech } from '../../hooks/useSpeech';
-import { PRESET_LABELS, guessVoiceGender } from '../../utils/voice';
-import type { EnergyPreset } from '../../types';
+import { guessVoiceGender } from '../../utils/voice';
 import { SpotifyAuthSection } from '../spotify/SpotifyAuthSection';
 import { PremiumVoiceSection } from './PremiumVoiceSection';
-
-const PRESET_ORDER: EnergyPreset[] = ['chill', 'normal', 'intense', 'coach'];
 
 export function SettingsPanel() {
   const settings = useAppStore((s) => s.settings);
@@ -34,13 +31,6 @@ export function SettingsPanel() {
     });
     return { fem, mas, unk };
   }, [voicesToShow]);
-
-  const testPhrases: Record<EnergyPreset, string> = {
-    chill: 'Respiramos profundo. Próximo movimiento.',
-    normal: 'Próximo movimiento: salto.',
-    intense: 'Salto invertido',
-    coach: 'Salto invertido',
-  };
 
   return (
     <div className="app-shell" style={{ paddingTop: 70 }}>
@@ -74,24 +64,15 @@ export function SettingsPanel() {
         </h2>
       </header>
 
-      <Section title="ESTILO DE VOZ">
+      <PremiumVoiceSection />
+
+      <Section title="VOZ DEL NAVEGADOR">
         {!isSupported && (
           <Note>Tu navegador no soporta síntesis de voz. Los anuncios no se escucharán.</Note>
         )}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {PRESET_ORDER.map((p) => (
-            <PresetCard
-              key={p}
-              preset={p}
-              active={settings.energyPreset === p}
-              onSelect={() => updateSettings({ energyPreset: p })}
-              onTest={() => speak(testPhrases[p], { hype: true })}
-            />
-          ))}
-        </div>
-      </Section>
-
-      <Section title="VOZ">
+        <small style={{ color: 'var(--text-muted)', fontSize: 11, lineHeight: 1.4 }}>
+          Esta es la voz de respaldo, se usa solo si la voz Premium está desactivada o no responde.
+        </small>
         <Field label="Voz específica">
           <select
             value={settings.voiceURI ?? ''}
@@ -204,13 +185,9 @@ export function SettingsPanel() {
           />
         </Field>
 
-        <Button variant="secondary" size="sm" onClick={() => speak('Hola, esta es una prueba de voz.', { hype: true })}>
+        <Button variant="secondary" size="sm" onClick={() => speak('Hola, esta es una prueba de voz.')}>
           Probar voz
         </Button>
-        <small style={{ color: 'var(--text-muted)', fontSize: 11 }}>
-          El preset puede modificar velocidad, tono, volumen y el texto (mayúsculas, signos de
-          exclamación, frases motivacionales).
-        </small>
       </Section>
 
       <Section title="ANUNCIOS">
@@ -279,74 +256,11 @@ export function SettingsPanel() {
         </Button>
       </Section>
 
-      <PremiumVoiceSection />
-
       <SpotifyAuthSection />
 
       <div style={{ marginTop: 24, color: 'var(--text-muted)', fontSize: 11, textAlign: 'center' }}>
         Tus rutinas y ajustes se guardan en este dispositivo.
       </div>
-    </div>
-  );
-}
-
-function PresetCard({
-  preset,
-  active,
-  onSelect,
-  onTest,
-}: {
-  preset: EnergyPreset;
-  active: boolean;
-  onSelect: () => void;
-  onTest: () => void;
-}) {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        padding: '10px 12px',
-        borderRadius: 10,
-        background: active ? 'rgba(0, 212, 255, 0.12)' : 'rgba(255, 255, 255, 0.02)',
-        border: active ? '1px solid rgba(0, 212, 255, 0.5)' : '1px solid var(--border-subtle)',
-        transition: 'background 0.2s ease, border-color 0.2s ease',
-      }}
-    >
-      <button
-        type="button"
-        onClick={onSelect}
-        style={{
-          background: 'none',
-          border: 'none',
-          color: 'var(--text-primary)',
-          fontSize: 14,
-          textAlign: 'left',
-          padding: 0,
-          flex: 1,
-          cursor: 'pointer',
-        }}
-      >
-        {active ? '● ' : '○ '}
-        {PRESET_LABELS[preset]}
-      </button>
-      <button
-        type="button"
-        onClick={onTest}
-        aria-label={`Probar preset ${preset}`}
-        style={{
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border-subtle)',
-          color: 'var(--text-secondary)',
-          borderRadius: 6,
-          padding: '4px 10px',
-          fontSize: 11,
-          cursor: 'pointer',
-        }}
-      >
-        ▶ probar
-      </button>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import type { SpotifyTrack } from '../../hooks/useSpotify';
 
 interface SpotifyPanelProps {
-  isReady: boolean;
+  hasActiveDevice: boolean;
   isPlaying: boolean;
   currentTrack: SpotifyTrack | null;
   volume: number;
@@ -13,7 +13,7 @@ interface SpotifyPanelProps {
 }
 
 export function SpotifyPanel({
-  isReady,
+  hasActiveDevice,
   isPlaying,
   currentTrack,
   volume,
@@ -66,7 +66,7 @@ export function SpotifyPanel({
               textOverflow: 'ellipsis',
             }}
           >
-            {currentTrack?.name ?? (isReady ? 'Listo para reproducir' : 'Conectando...')}
+            {currentTrack?.name ?? (hasActiveDevice ? 'Sin canción' : 'Spotify no está reproduciendo')}
           </div>
           <div
             style={{
@@ -78,26 +78,24 @@ export function SpotifyPanel({
             }}
           >
             {currentTrack?.artists ??
-              (isReady
-                ? 'Elegí "AcroBungee Timer" como dispositivo en la app de Spotify'
-                : '')}
+              (hasActiveDevice ? '' : 'Abrí Spotify, ponele play a tu playlist y volvé')}
           </div>
         </div>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <CircleBtn aria-label="Anterior" onClick={onPrev} disabled={!isReady}>
+        <CircleBtn aria-label="Anterior" onClick={onPrev} disabled={!hasActiveDevice}>
           ⏮
         </CircleBtn>
         <CircleBtn
           aria-label={isPlaying ? 'Pausar' : 'Reproducir'}
           onClick={onTogglePlay}
-          disabled={!isReady}
+          disabled={!hasActiveDevice}
           accent
         >
           {isPlaying ? '⏸' : '▶'}
         </CircleBtn>
-        <CircleBtn aria-label="Siguiente" onClick={onNext} disabled={!isReady}>
+        <CircleBtn aria-label="Siguiente" onClick={onNext} disabled={!hasActiveDevice}>
           ⏭
         </CircleBtn>
         <div style={{ flex: 1, marginLeft: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -109,7 +107,7 @@ export function SpotifyPanel({
             step={0.05}
             value={volume}
             onChange={(e) => onVolume(parseFloat(e.target.value))}
-            disabled={!isReady}
+            disabled={!hasActiveDevice}
             aria-label="Volumen de Spotify"
             style={{ width: '100%' }}
           />

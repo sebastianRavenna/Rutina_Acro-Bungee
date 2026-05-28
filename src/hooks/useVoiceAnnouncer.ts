@@ -1,8 +1,7 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { useSpeech } from './useSpeech';
 import { useAzureTTS } from './useAzureTTS';
-import { getPresetModifiers } from '../utils/voice';
 import type { Routine } from '../types';
 
 interface VoiceAnnouncerOpts {
@@ -11,7 +10,6 @@ interface VoiceAnnouncerOpts {
 }
 
 interface SpeakOptions {
-  hype?: boolean;
   onEnd?: () => void;
 }
 
@@ -46,35 +44,12 @@ export function useVoiceAnnouncer(opts: VoiceAnnouncerOpts = {}): VoiceAnnouncer
   const optsRef = useRef(opts);
   optsRef.current = opts;
 
-  // Modifiers del preset traducidos a parámetros SSML que Azure entiende
-  const azureProsody = useMemo(() => {
-    const mods = getPresetModifiers(settings.energyPreset);
-    // rateMultiplier 1 → "+0%", 1.1 → "+10%", 0.9 → "-10%"
-    const ratePct = Math.round((mods.rateMultiplier - 1) * 100);
-    // pitchDelta 0.15 → "+15%" (aprox; mapeo simple)
-    const pitchPct = Math.round(mods.pitchDelta * 100);
-    const styleByPreset: Record<string, string | undefined> = {
-      coach: 'cheerful',
-      intense: 'cheerful',
-    };
-    return {
-      rate: ratePct >= 0 ? `+${ratePct}%` : `${ratePct}%`,
-      pitch: pitchPct >= 0 ? `+${pitchPct}%` : `${pitchPct}%`,
-      style: styleByPreset[settings.energyPreset],
-      transform: mods.transformText,
-      pickHype: mods.pickHype,
-    };
-  }, [settings.energyPreset]);
-
   const speak = useCallback<VoiceAnnouncerReturn['speak']>(
     (text, options) => {
       if (!isPremiumActive) {
         speech.speak(text, options);
         return;
       }
-      // En premium NO aplicamos hype dinámico (porque las arengas no están pre-cacheadas
-      // y romperían el flow). Solo transformamos texto con el preset.
-      const transformed = azureProsody.transform(text);
       let endFired = false;
       const fireOnEnd = () => {
         if (endFired) return;
@@ -84,11 +59,9 @@ export function useVoiceAnnouncer(opts: VoiceAnnouncerOpts = {}): VoiceAnnouncer
       void (async () => {
         const played = await azure.play(
           {
-            text: transformed,
+            text,
             voice: settings.premiumVoiceId,
-            rate: azureProsody.rate,
-            pitch: azureProsody.pitch,
-            style: azureProsody.style,
+            // Sin prosody y sin style: la voz va al natural.
           },
           {
             onStart: () => optsRef.current.onSpeakStart?.(),
@@ -106,16 +79,7 @@ export function useVoiceAnnouncer(opts: VoiceAnnouncerOpts = {}): VoiceAnnouncer
         }
       })();
     },
-    [
-      isPremiumActive,
-      speech,
-      azure,
-      settings.premiumVoiceId,
-      azureProsody.rate,
-      azureProsody.pitch,
-      azureProsody.style,
-      azureProsody.transform,
-    ],
+    [isPremiumActive, speech, azure, settings.premiumVoiceId],
   );
 
   const cancel = useCallback(() => {
@@ -146,27 +110,24 @@ export function useVoiceAnnouncer(opts: VoiceAnnouncerOpts = {}): VoiceAnnouncer
       const texts = new Set<string>();
       // Nombre de cada movimiento SIEMPRE (se anuncia al cambiar)
       routine.movements.forEach((m, i) => {
-        texts.add(azureProsody.transform(m.name));
+        texts.add(m.name);
         // "Próximo: X" solo si está activo el aviso
         if (settings.announceNextMovement) {
           const next = routine.movements[i + 1];
           if (next) {
-            texts.add(azureProsody.transform(`Próximo: ${next.name}`));
+            texts.add(`Próximo: ${next.name}`);
           }
         }
       });
       // Cuenta regresiva inicial: pre-cargar números 1..startCountdownSeconds
       for (let n = 1; n <= settings.startCountdownSeconds; n++) {
-        texts.add(azureProsody.transform(String(n)));
+        texts.add(String(n));
       }
-      texts.add(azureProsody.transform('¡Rutina completada! Excelente trabajo.'));
+      texts.add('¡Rutina completada! Excelente trabajo.');
 
       const requests = Array.from(texts).map((text) => ({
         text,
         voice: settings.premiumVoiceId,
-        rate: azureProsody.rate,
-        pitch: azureProsody.pitch,
-        style: azureProsody.style,
       }));
 
       const result = await azure.preload(requests, onProgress);
@@ -178,10 +139,6 @@ export function useVoiceAnnouncer(opts: VoiceAnnouncerOpts = {}): VoiceAnnouncer
       settings.startCountdownSeconds,
       settings.premiumVoiceId,
       azure,
-      azureProsody.rate,
-      azureProsody.pitch,
-      azureProsody.style,
-      azureProsody.transform,
     ],
   );
 

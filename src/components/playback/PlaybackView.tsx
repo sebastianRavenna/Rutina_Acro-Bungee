@@ -120,7 +120,7 @@ export function PlaybackView() {
     await requestWakeLock();
 
     // 1) Anunciar el nombre del primer movimiento — SIEMPRE
-    await speakAndWait(currentMovement.name, { hype: true });
+    await speakAndWait(currentMovement.name);
 
     // 2) Cuenta regresiva inicial: N, N-1, ..., 1 con pausas de ~1s entre cada uno
     if (settings.startCountdownSeconds > 0) {
@@ -188,7 +188,7 @@ export function PlaybackView() {
     const prev = routine.movements[prevIndex];
     if (!prev) return;
     setPlayback({ currentIndex: prevIndex, timeLeft: prev.duration, isFinished: false });
-    speak(prev.name, { hype: true });
+    speak(prev.name);
   };
 
   const handleNext = () => {
@@ -200,7 +200,7 @@ export function PlaybackView() {
       return;
     }
     setPlayback({ currentIndex: nextIndex, timeLeft: next.duration });
-    speak(next.name, { hype: true });
+    speak(next.name);
   };
 
   const handleEnd = () => {
@@ -275,7 +275,7 @@ export function PlaybackView() {
 
           {settings.spotifyEnabled && spotify.isAuthenticated && (
             <SpotifyPanel
-              isReady={spotify.isReady}
+              hasActiveDevice={spotify.hasActiveDevice}
               isPlaying={spotify.isPlaying}
               currentTrack={spotify.currentTrack}
               volume={spotify.volume}

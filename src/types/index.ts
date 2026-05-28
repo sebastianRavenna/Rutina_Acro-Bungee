@@ -26,8 +26,6 @@ export interface MovementTemplate {
   usageCount: number;
 }
 
-export type EnergyPreset = 'chill' | 'normal' | 'intense' | 'coach';
-
 export interface AppSettings {
   warnBeforeSeconds: number;
   voiceLang: string;
@@ -35,7 +33,6 @@ export interface AppSettings {
   voiceRate: number;
   voicePitch: number;
   voiceVolume: number;
-  energyPreset: EnergyPreset; // 'normal' = no transform; otros aplican modificadores
   /** Si true, anuncia "Próximo: X" antes del cambio. El nombre del movimiento
    *  al cambiar SIEMPRE se anuncia (independiente de este flag). */
   announceNextMovement: boolean;
@@ -44,6 +41,9 @@ export interface AppSettings {
   startCountdownSeconds: number;
   spotifyEnabled: boolean;
   spotifyClientId: string;
+  /** Link o URI de Spotify de la playlist/álbum/canción favorita.
+   *  Puede ser un open.spotify.com/... o un spotify:playlist:... */
+  spotifyPlaylistUri: string;
   // Azure TTS (voces premium pre-generadas)
   premiumVoiceEnabled: boolean;
   premiumVoiceId: string; // ej: "es-AR-ElenaNeural"

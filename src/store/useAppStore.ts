@@ -17,12 +17,13 @@ const DEFAULT_SETTINGS: AppSettings = {
   voiceRate: 0.9,
   voicePitch: 1.0,
   voiceVolume: 1.0,
-  energyPreset: 'normal',
   announceNextMovement: true,
   startCountdownSeconds: 5,
   spotifyEnabled: false,
   spotifyClientId: '',
-  premiumVoiceEnabled: false,
+  spotifyPlaylistUri: '',
+  // Por default arrancamos con voz premium activa y Elena (Argentina).
+  premiumVoiceEnabled: true,
   premiumVoiceId: 'es-AR-ElenaNeural',
 };
 
@@ -267,7 +268,7 @@ export const useAppStore = create<AppStore>()(
     }),
     {
       name: 'acrobungee-timer-v1',
-      version: 2,
+      version: 3,
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         routines: state.routines,
@@ -276,23 +277,31 @@ export const useAppStore = create<AppStore>()(
       }),
       migrate: (persisted: unknown, fromVersion: number) => {
         const state = persisted as { settings?: Record<string, unknown> } | undefined;
-        if (state?.settings && fromVersion < 2) {
+        if (state?.settings) {
           const s = state.settings;
-          // Migración: announceMovementName/announceCountdown → announceNextMovement/startCountdownSeconds
-          if ('announceMovementName' in s) {
-            s.announceNextMovement = s.announceMovementName !== false;
-            delete s.announceMovementName;
-          } else if (!('announceNextMovement' in s)) {
-            s.announceNextMovement = true;
+          if (fromVersion < 2) {
+            // Migración v1→v2: announceMovementName/announceCountdown → announceNextMovement/startCountdownSeconds
+            if ('announceMovementName' in s) {
+              s.announceNextMovement = s.announceMovementName !== false;
+              delete s.announceMovementName;
+            } else if (!('announceNextMovement' in s)) {
+              s.announceNextMovement = true;
+            }
+            if ('announceCountdown' in s) {
+              s.startCountdownSeconds = s.announceCountdown ? 5 : 0;
+              delete s.announceCountdown;
+            } else if (!('startCountdownSeconds' in s)) {
+              s.startCountdownSeconds = 5;
+            }
           }
-          if ('announceCountdown' in s) {
-            s.startCountdownSeconds = s.announceCountdown ? 5 : 0;
-            delete s.announceCountdown;
-          } else if (!('startCountdownSeconds' in s)) {
-            s.startCountdownSeconds = 5;
+          if (fromVersion < 3) {
+            // Migración v2→v3: quitamos energyPreset (siempre "normal" ahora).
+            // Y activamos premium por default con Elena Argentina si no estaba seteado.
+            delete s.energyPreset;
+            if (s.premiumVoiceEnabled === undefined) s.premiumVoiceEnabled = true;
+            if (!s.premiumVoiceId) s.premiumVoiceId = 'es-AR-ElenaNeural';
           }
         }
-        // El cast es seguro: la lógica de migración ya dejó la forma esperada.
         return state as unknown as AppStore;
       },
     },

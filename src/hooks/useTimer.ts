@@ -4,7 +4,7 @@ import type { Routine } from '../types';
 
 interface UseTimerArgs {
   routine: Routine | null;
-  speak: (text: string, options?: { hype?: boolean; onEnd?: () => void }) => void;
+  speak: (text: string, options?: { onEnd?: () => void }) => void;
 }
 
 export function useTimer({ routine, speak }: UseTimerArgs) {
@@ -64,7 +64,7 @@ export function useTimer({ routine, speak }: UseTimerArgs) {
           lastIndexRef.current = nextIndex;
           setPlayback({ currentIndex: nextIndex, timeLeft: nextMov.duration });
           // SIEMPRE anunciar el nombre del nuevo movimiento al cambiar
-          speak(nextMov.name, { hype: true });
+          speak(nextMov.name);
         } else {
           setPlayback({ timeLeft: 0, isPlaying: false, isFinished: true });
           speak('¡Rutina completada! Excelente trabajo.');

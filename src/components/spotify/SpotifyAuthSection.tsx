@@ -77,8 +77,10 @@ export function SpotifyAuthSection() {
         {settings.spotifyEnabled && (
           <>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-              Requiere <strong style={{ color: 'var(--text-primary)' }}>Spotify Premium</strong>. El
-              audio baja al 30% cuando habla la voz.
+              AcroBungee es solo un <strong style={{ color: 'var(--text-primary)' }}>control
+              remoto</strong> — la playlist se maneja desde Spotify. Requiere{' '}
+              <strong style={{ color: 'var(--text-primary)' }}>Spotify Premium</strong>. El audio
+              baja al 30% cuando habla la voz.
             </div>
 
             {hasEnvClientId ? (
@@ -229,7 +231,7 @@ function HelpSteps() {
         </li>
         <li>
           En <strong style={{ color: 'var(--text-primary)' }}>APIs used</strong> tildá
-          <em> Web API</em> y <em>Web Playback SDK</em>.
+          <em> Web API</em>.
         </li>
         <li>Guardá y copiá el Client ID acá arriba.</li>
       </ol>

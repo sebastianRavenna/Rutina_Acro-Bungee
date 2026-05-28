@@ -1,10 +1,9 @@
 // OAuth PKCE para Spotify Web API + Web Playback SDK
 // Docs: https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow
 
+// Solo control remoto — no usamos el Web Playback SDK,
+// así que sacamos `streaming` y los scopes de email/perfil.
 const SCOPES = [
-  'streaming',
-  'user-read-email',
-  'user-read-private',
   'user-read-playback-state',
   'user-modify-playback-state',
   'user-read-currently-playing',

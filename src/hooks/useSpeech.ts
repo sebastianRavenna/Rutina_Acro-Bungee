@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { getPresetModifiers } from '../utils/voice';
 
 interface UseSpeechOptions {
   onSpeakStart?: () => void;
@@ -8,7 +7,7 @@ interface UseSpeechOptions {
 }
 
 interface UseSpeechReturn {
-  speak: (text: string, options?: { hype?: boolean; onEnd?: () => void }) => void;
+  speak: (text: string, options?: { onEnd?: () => void }) => void;
   cancel: () => void;
   isSupported: boolean;
   availableVoices: SpeechSynthesisVoice[]; // todas (no solo es-*)
@@ -54,7 +53,7 @@ export function useSpeech(options: UseSpeechOptions = {}): UseSpeechReturn {
   }, [voices, spanishVoices, settings.voiceURI, settings.voiceLang]);
 
   const speak = useCallback(
-    (text: string, opts: { hype?: boolean; onEnd?: () => void } = {}) => {
+    (text: string, opts: { onEnd?: () => void } = {}) => {
       if (!isSupported || !text) {
         opts.onEnd?.();
         return;
@@ -65,22 +64,17 @@ export function useSpeech(options: UseSpeechOptions = {}): UseSpeechReturn {
       } catch {
         // ignore
       }
-      const mods = getPresetModifiers(settings.energyPreset);
-      let finalText = mods.transformText(text);
-      if (opts.hype && mods.pickHype) {
-        const hype = mods.pickHype();
-        if (hype) finalText = `${hype} ${finalText}`;
-      }
-      const utter = new SpeechSynthesisUtterance(finalText);
+      // hype y presets ya no se aplican: la voz va al natural con los valores del usuario.
+      const utter = new SpeechSynthesisUtterance(text);
       if (chosenVoice) {
         utter.voice = chosenVoice;
         utter.lang = chosenVoice.lang;
       } else {
         utter.lang = settings.voiceLang;
       }
-      utter.rate = clamp(settings.voiceRate * mods.rateMultiplier, 0.5, 2);
-      utter.pitch = clamp(settings.voicePitch + mods.pitchDelta, 0, 2);
-      utter.volume = clamp(settings.voiceVolume * mods.volumeMultiplier, 0, 1);
+      utter.rate = clamp(settings.voiceRate, 0.5, 2);
+      utter.pitch = clamp(settings.voicePitch, 0, 2);
+      utter.volume = clamp(settings.voiceVolume, 0, 1);
       let endFired = false;
       const fireEnd = () => {
         if (endFired) return;
@@ -104,7 +98,6 @@ export function useSpeech(options: UseSpeechOptions = {}): UseSpeechReturn {
       settings.voiceRate,
       settings.voicePitch,
       settings.voiceVolume,
-      settings.energyPreset,
     ],
   );
 

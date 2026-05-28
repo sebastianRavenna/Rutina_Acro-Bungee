@@ -5,8 +5,9 @@ dist-ssr
 
 .env
 .env.local
-.env.example
 .env.*.local
+# NO ignorar .env.example — es el template con placeholders que sí va al repo.
+# Asegurate de que NUNCA tenga valores reales pegados ahí.
 
 .vscode/*
 !.vscode/extensions.json
